@@ -1,0 +1,352 @@
+#include <Servo.h>
+#include <Stepper.h>
+#include <LiquidCrystal_I2C.h>
+#include<SoftwareSerial.h>
+
+SoftwareSerial arduino(0,1);
+LiquidCrystal_I2C lcd(0x27,16,2);
+
+Servo servo1;
+Servo servo2;
+Servo servo3;
+int aci1;
+int aci2;
+int aci3;
+
+int ldr=A2;
+int ldrdeger=0;
+int ledPin = 10;
+
+int IR_sensor_1 = 50;
+int IR_sensor_2 = 48;
+int IR_sensor_3 = 46;
+int buton = 52;
+int buttonState = 0;
+
+int joyX = A1;
+
+int motorIN3 = 4;  // Bant Motor Pinleri
+int motorIN4 = 5;
+int motorIN1 = 2;  // Pompa Motor Pinleri
+int motorIN2 = 3;
+
+int sure = 3; 
+#define stepIN1 6 // Step Motor
+#define stepIN2 7 //Sürücü
+#define stepIN3 8  //Pin
+#define stepIN4 9  //Bağlantıları
+
+// (int)DB , (int)DS , (int)Giris
+//String Değişkenler
+String DB1 ="";
+String DS1 ="";
+String data="";
+int DB=0;    // Bos sayısı
+int DS=0;    // Dolu sayısı
+
+int Giris = 0; // giren şişe sayısı
+
+void setup() 
+{
+
+ 
+  pinMode(stepIN1, OUTPUT);   
+  pinMode(stepIN2, OUTPUT); 
+  pinMode(stepIN3, OUTPUT); 
+  pinMode(stepIN4, OUTPUT); 
+  
+  pinMode(motorIN3, OUTPUT);    
+  pinMode(motorIN4, OUTPUT);
+  pinMode(motorIN1, OUTPUT);
+  pinMode(motorIN2, OUTPUT);
+
+  pinMode(buton, INPUT); 
+  pinMode(ledPin, OUTPUT); 
+  pinMode(ldr,INPUT);
+
+  pinMode(IR_sensor_1, INPUT);    
+  pinMode(IR_sensor_2, INPUT);
+  pinMode(IR_sensor_3, INPUT);
+
+  lcd.begin();
+  Serial.begin(9600);
+  arduino.begin(9600); 
+
+  servo1.attach(11);
+  servo2.attach(12);
+  servo3.attach(13);
+
+  servo1.write(90);
+  servo2.write(90);
+  servo3.write(90);
+
+
+
+}
+
+void loop() 
+{
+
+      // Manuel Kontrol
+  
+    while(analogRead(A0)<500)
+    {
+
+     lcd.setCursor(5,0); 
+     lcd.print("Manuel");
+     lcd.setCursor(4,1); 
+     lcd.print("Calisiyor");
+     Serial.println("MANUEL");
+
+     int xVal = analogRead(joyX);
+     int motorDirection = map(xVal, 0, 1023, -1, 1);
+
+      //Motorun hızının ve yönünün ayarlanması
+     if(motorDirection == 1) {
+      digitalWrite(motorIN3, HIGH);
+      digitalWrite(motorIN4, LOW);
+     } else if(motorDirection == -1) {
+     digitalWrite(motorIN3, LOW);
+     digitalWrite(motorIN4, HIGH);
+     } else {
+     digitalWrite(motorIN3, LOW);
+     digitalWrite(motorIN4, LOW);
+     }
+     Serial.print("Joystıck = ");
+     Serial.println(motorDirection);
+  
+  
+     buttonState = digitalRead(buton);  //Pompa Kontrolü
+      
+     if (buttonState == HIGH) { 
+     digitalWrite(motorIN1, HIGH);
+     digitalWrite(motorIN2, LOW);
+     digitalWrite(ledPin,HIGH);
+    
+    
+     delay(2000);
+    
+     digitalWrite(motorIN1, LOW);
+     digitalWrite(motorIN2, LOW);
+     digitalWrite(ledPin,LOW);
+     delay(2000);
+    } 
+
+    delay(500);
+    lcd.clear();
+  }
+
+
+  // Otomatik Kontrol
+    
+  while (analogRead(A0) > 500) { 
+
+
+     lcd.setCursor(0,0); 
+     lcd.print("Otomatik Clsyor");
+     lcd.setCursor(2,1); 
+     lcd.print("DB=");
+     lcd.setCursor(6,1);
+     lcd.print(DB);
+     lcd.setCursor(8,1); 
+     lcd.print("DS=");
+     lcd.setCursor(11,1);
+     lcd.print(DS);
+     Serial.println("OTOMATİK");
+
+     arduino.flush();
+
+   digitalWrite(motorIN3, HIGH);  // Bant Çalışıyor
+   digitalWrite(motorIN4, LOW);
+   delay(200);
+
+  int sensorValue = digitalRead(IR_sensor_1);  // Giriş Sensörü
+
+  if (sensorValue == LOW) { 
+    Giris=Giris+1;
+    Serial.println(Giris); 
+    delay(500); 
+ 
+  }
+
+   
+int sensorValue2 = digitalRead(IR_sensor_2);  // Sıvı dolum için okunacak Sensör
+
+  if (sensorValue2 == LOW) { 
+
+    digitalWrite(motorIN3, LOW);  // Bant Durdur
+    digitalWrite(motorIN4, LOW);
+    delay(200);
+    
+    // 103 Adım Tam Tur 90 Derecedir.
+    SaatYonu(103); //Saat Yönü 103 Adım döngüye gidiyor
+    delay(1000);
+
+    digitalWrite(motorIN3, HIGH); // Bariyer indi bandı çalıştır boru ucu tutsun
+    digitalWrite(motorIN4, LOW);
+    delay(1000);
+    digitalWrite(motorIN3, LOW);     // Bandı Durdur
+    digitalWrite(motorIN4, LOW);
+
+    digitalWrite(motorIN1, HIGH);    // Pompayı Çalıştır
+    digitalWrite(motorIN2, LOW);
+    digitalWrite(ledPin,HIGH);
+    
+    delay(2000);
+    
+    digitalWrite(motorIN1, LOW);     // Pompayı Durdur
+    digitalWrite(motorIN2, LOW);
+    digitalWrite(ledPin,LOW);
+    delay(1000);
+    
+    // Bariyer Kaldırma
+    SaatTersYonu(103);//Saat Ters Yönü 103 Adım  döngüye gidiyor
+    delay(200);
+
+
+    digitalWrite(motorIN3, HIGH); // Bandı Çalıştır
+    digitalWrite(motorIN4, LOW);
+    delay(1000);
+ 
+  }
+
+
+  ldrdeger=analogRead(ldr);    // Dolu Boş Algılama ve Ayırma Kısmı
+  Serial.print("ldrdeger = ");
+  Serial.println(ldr);
+  
+   if(900>ldrdeger){ // ŞİŞE ÖNÜNE İLK GELDİĞİNDE
+ 
+   digitalWrite(motorIN3, LOW);  
+   digitalWrite(motorIN4, LOW);
+   delay(1000);
+
+if((900>ldrdeger)&&(ldrdeger>300)){        // ROBOT KOL KISMI 
+  
+  // KOL  ÖN KISIM BAŞLANGIÇ
+for(aci1=90;aci1>=70;aci1-=1){
+servo1.write(aci1);
+delay(50);
+}
+for(aci2=90;aci2<=160;aci2+=1){
+servo2.write(aci2);
+delay(50);
+}
+for(aci3=90;aci3<=180;aci3+=1){
+servo3.write(aci3);
+delay(50);
+}
+  //  KOL ÖN KISIM SON
+
+delay(1000);
+
+// KOL ARKA KISIM BAŞLANGIÇ
+for(aci2=160;aci2>=90;aci2-=1){
+servo2.write(aci2);
+delay(50);
+} 
+
+for(aci1=70;aci1<=120;aci1+=1){
+servo1.write(aci1);
+delay(50);
+}
+for(aci2=90;aci2>=60;aci2-=1){
+servo2.write(aci2);
+delay(50);
+} //KOL  ARKA KISIM SON
+
+for(aci3=170;aci3>=90;aci3-=1){   // Boş Şişe Bırakma
+servo3.write(aci3);
+delay(50);
+}
+
+delay(1000);
+
+// KOL GERİ DÖNÜŞ
+for(aci2=60;aci2<=90;aci2+=1){
+servo2.write(aci2);
+delay(50);
+}
+for(aci1=120;aci1>=90;aci1-=1){
+servo1.write(aci1);
+delay(50);
+}
+delay(1000);
+
+digitalWrite(motorIN3, HIGH); // Bandı Çalıştır
+digitalWrite(motorIN4, LOW);
+delay(1000);
+
+}//Robot Kol if
+
+digitalWrite(motorIN3, HIGH); // Bandı Çalıştır
+digitalWrite(motorIN4, LOW);
+delay(1000);
+}//ilk şişe görüş if
+
+   
+   
+  int sensorValue3 = digitalRead(IR_sensor_3);   // Çıkış Sensörü
+
+  if (sensorValue3 == LOW) { 
+    DS++;
+    delay(500);
+   }
+
+     DB=Giris-DS ; 
+    Serial.print("DB = "); 
+    Serial.println(DB);
+    Serial.print("DS = "); 
+    Serial.println(DS);
+
+
+ // İOT KISMI
+   DB1=String(DB);
+   DS1=String(DS);
+  
+   data = DB1 + "/" + DS1 + "/" + "%" ;
+
+   // (int)DB , (int)DS 
+   arduino.println(data);
+   Serial.println(data); 
+   delay(1000);
+}
+
+    delay(600);
+    lcd.clear();
+    
+}
+
+
+
+void SaatYonu(int adimSayisi) {                       // Bariyer Açılması
+  for (int i = 0; i < adimSayisi; i++) {
+    digitalWrite(stepIN4, HIGH);
+    delay(sure);
+    digitalWrite(stepIN4, LOW);
+    digitalWrite(stepIN3, HIGH);
+    delay(sure);
+    digitalWrite(stepIN3, LOW);
+    digitalWrite(stepIN2, HIGH);
+    delay(sure);
+    digitalWrite(stepIN2, LOW);
+    digitalWrite(stepIN1, HIGH);
+    delay(sure);
+    digitalWrite(stepIN1, LOW);
+  }
+}
+void SaatTersYonu(int adimSayisi) {             // Bariyer Kapanması
+  for (int i = 0; i < adimSayisi; i++) {
+    digitalWrite(stepIN1, HIGH);
+    delay(sure);
+    digitalWrite(stepIN1, LOW);
+    digitalWrite(stepIN2, HIGH);
+    delay(sure);
+    digitalWrite(stepIN2, LOW);
+    digitalWrite(stepIN3, HIGH);
+    delay(sure);
+    digitalWrite(stepIN3, LOW);
+    digitalWrite(stepIN4, HIGH);
+    delay(sure);
+    digitalWrite(stepIN4, LOW);
+  }}
